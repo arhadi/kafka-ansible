@@ -1,0 +1,56 @@
+---
+- name: Create Kafka configuration directory
+  ansible.builtin.file:
+    path: "{{ kafka_current_dir }}/config/kraft"
+    state: directory
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0755"
+
+- name: Create Kafka data directory
+  ansible.builtin.file:
+    path: "{{ kafka_data_dir }}"
+    state: directory
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0755"
+
+- name: Create Kafka log directory
+  ansible.builtin.file:
+    path: "{{ kafka_log_dir }}"
+    state: directory
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0755"
+
+- name: Generate Kafka server configuration
+  ansible.builtin.template:
+    src: server.properties.j2
+    dest: "{{ kafka_current_dir }}/config/kraft/server.properties"
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0644"
+  notify: Restart Kafka
+
+- name: Verify Kafka server configuration exists
+  ansible.builtin.stat:
+    path: "{{ kafka_current_dir }}/config/kraft/server.properties"
+  register: kafka_server_properties
+
+- name: Fail if Kafka server configuration is missing
+  ansible.builtin.assert:
+    that:
+      - kafka_server_properties.stat.exists
+    fail_msg: >-
+      Kafka configuration file was not created:
+      {{ kafka_current_dir }}/config/kraft/server.properties
+
+- name: Display Kafka configuration location
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Kafka configuration generated"
+      - "Node          : {{ inventory_hostname }}"
+      - "Node ID       : {{ kafka_node_id }}"
+      - "Configuration : {{ kafka_current_dir }}/config/kraft/server.properties"
+      - "========================================"

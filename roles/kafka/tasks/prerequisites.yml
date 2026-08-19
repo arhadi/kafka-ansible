@@ -1,0 +1,45 @@
+---
+- name: Install required packages
+  ansible.builtin.package:
+    name:
+      - java-21-openjdk-headless
+      - tar
+      - gzip
+    state: present
+
+- name: Create Kafka group
+  ansible.builtin.group:
+    name: "{{ kafka_group }}"
+    system: true
+    state: present
+
+- name: Create Kafka user
+  ansible.builtin.user:
+    name: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    system: true
+    shell: /sbin/nologin
+    create_home: false
+    state: present
+
+- name: Create Kafka directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0755"
+  loop:
+    - "{{ kafka_install_root }}"
+    - "{{ kafka_data_dir }}"
+    - "{{ kafka_log_dir }}"
+
+- name: Verify Java installation
+  ansible.builtin.command:
+    cmd: java -version
+  register: kafka_java_version
+  changed_when: false
+
+- name: Display Java version
+  ansible.builtin.debug:
+    var: kafka_java_version.stderr_lines

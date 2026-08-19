@@ -1,0 +1,66 @@
+---
+# ============================================================
+# Apache Kafka validation
+# ============================================================
+
+- name: Verify Kafka service is active
+  ansible.builtin.command:
+    cmd: systemctl is-active kafka
+  register: kafka_validation_service
+  changed_when: false
+
+- name: Verify Kafka broker port
+  ansible.builtin.wait_for:
+    host: "{{ kafka_host }}"
+    port: "{{ kafka_broker_port }}"
+    state: started
+    timeout: 60
+
+- name: Verify Kafka controller port
+  ansible.builtin.wait_for:
+    host: "{{ kafka_host }}"
+    port: "{{ kafka_controller_port }}"
+    state: started
+    timeout: 60
+
+- name: Query Kafka broker API
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_current_dir }}/bin/kafka-broker-api-versions.sh
+      --bootstrap-server {{ kafka_host }}:{{ kafka_broker_port }}
+  register: kafka_broker_api
+  changed_when: false
+  retries: 5
+  delay: 5
+  until: kafka_broker_api.rc == 0
+
+- name: Verify Kafka KRaft metadata quorum
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_current_dir }}/bin/kafka-metadata-quorum.sh
+      --bootstrap-server {{ kafka_host }}:{{ kafka_broker_port }}
+      describe --status
+  register: kafka_quorum_status
+  changed_when: false
+  retries: 5
+  delay: 5
+  until: kafka_quorum_status.rc == 0
+
+- name: Display Kafka KRaft quorum
+  ansible.builtin.debug:
+    var: kafka_quorum_status.stdout_lines
+
+- name: Kafka validation summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Kafka validation completed"
+      - "Node             : {{ inventory_hostname }}"
+      - "Node ID          : {{ kafka_node_id }}"
+      - "Kafka Version    : {{ kafka_version }}"
+      - "Service          : {{ kafka_validation_service.stdout }}"
+      - "Broker           : {{ kafka_host }}:{{ kafka_broker_port }}"
+      - "Controller       : {{ kafka_host }}:{{ kafka_controller_port }}"
+      - "Cluster ID       : {{ hostvars[groups['kafka'][0]].kafka_cluster_id }}"
+      - "Deployment Nodes : {{ groups['kafka'] | length }}"
+      - "========================================"

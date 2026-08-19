@@ -1,0 +1,33 @@
+# Managed by Ansible
+# Apache Kafka {{ kafka_version }}
+
+[Unit]
+Description=Apache Kafka {{ kafka_version }}
+Documentation=https://kafka.apache.org/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+User={{ kafka_user }}
+Group={{ kafka_group }}
+
+Environment="KAFKA_HEAP_OPTS={{ kafka_heap_opts }}"
+
+ExecStart={{ kafka_current_dir }}/bin/kafka-server-start.sh {{ kafka_current_dir }}/config/kraft/server.properties
+
+ExecStop={{ kafka_current_dir }}/bin/kafka-server-stop.sh
+
+Restart=on-failure
+RestartSec=10
+
+SuccessExitStatus=143
+
+LimitNOFILE=100000
+TimeoutStopSec=180
+
+WorkingDirectory={{ kafka_current_dir }}
+
+[Install]
+WantedBy=multi-user.target

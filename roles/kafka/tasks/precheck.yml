@@ -1,0 +1,42 @@
+---
+- name: Verify supported operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == "RedHat"
+      - ansible_facts['distribution_major_version'] | int >= 9
+    fail_msg: >-
+      Unsupported operating system.
+      This role requires RHEL-compatible Linux 9 or later.
+    success_msg: >-
+      Operating system validation passed:
+      {{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }}
+
+- name: Verify Kafka node ID is defined
+  ansible.builtin.assert:
+    that:
+      - kafka_node_id is defined
+      - kafka_node_id | int >= 1
+    fail_msg: "kafka_node_id must be defined for every Kafka host."
+
+- name: Verify Kafka inventory contains at least one node
+  ansible.builtin.assert:
+    that:
+      - groups['kafka'] | length >= 1
+    fail_msg: "No Kafka hosts found in inventory."
+
+- name: Display Kafka deployment information
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Apache Kafka deployment"
+      - "Kafka Version  : {{ kafka_version }}"
+      - "Kafka Nodes    : {{ groups['kafka'] | length }}"
+      - "Current Node   : {{ inventory_hostname }}"
+      - "Kafka Node ID  : {{ kafka_node_id }}"
+      - "Process Roles  : {{ kafka_process_roles }}"
+      - "Install Dir    : {{ kafka_install_dir }}"
+      - "Data Dir       : {{ kafka_data_dir }}"
+      - "Broker Port    : {{ kafka_broker_port }}"
+      - "Controller Port: {{ kafka_controller_port }}"
+      - "========================================"

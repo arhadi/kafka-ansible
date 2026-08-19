@@ -1,0 +1,296 @@
+---
+# ============================================================
+# Apache Kafka KRaft Initialization
+#
+# - First Kafka inventory host owns the authoritative cluster ID.
+# - One cluster ID is shared by every Kafka node.
+# - Every controller receives its own unique directory ID.
+# - Initial controller membership is built from inventory.
+# - Existing Kafka storage is never reformatted.
+# ============================================================
+
+
+# ============================================================
+# Initialization host
+# ============================================================
+
+- name: Set Kafka KRaft initialization host
+  ansible.builtin.set_fact:
+    kafka_kraft_init_host: "{{ groups['kafka'][0] }}"
+
+
+# ============================================================
+# Cluster ID
+# ============================================================
+
+- name: Check Kafka cluster ID on initialization host
+  ansible.builtin.stat:
+    path: "{{ kafka_cluster_id_file }}"
+  register: kafka_cluster_id_file_stat
+  delegate_to: "{{ groups['kafka'][0] }}"
+  run_once: true
+
+
+- name: Generate Kafka cluster ID
+  ansible.builtin.command:
+    cmd: "{{ kafka_current_dir }}/bin/kafka-storage.sh random-uuid"
+  register: kafka_generated_cluster_id
+  delegate_to: "{{ groups['kafka'][0] }}"
+  run_once: true
+  changed_when: true
+  when:
+    - not kafka_cluster_id_file_stat.stat.exists
+
+
+- name: Persist Kafka cluster ID on initialization host
+  ansible.builtin.copy:
+    content: "{{ kafka_generated_cluster_id.stdout | trim }}\n"
+    dest: "{{ kafka_cluster_id_file }}"
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0644"
+  delegate_to: "{{ groups['kafka'][0] }}"
+  run_once: true
+  when:
+    - not kafka_cluster_id_file_stat.stat.exists
+
+
+- name: Read Kafka cluster ID from initialization host
+  ansible.builtin.slurp:
+    src: "{{ kafka_cluster_id_file }}"
+  register: kafka_cluster_id_slurp
+  delegate_to: "{{ groups['kafka'][0] }}"
+  run_once: true
+
+
+- name: Set Kafka cluster ID on every node
+  ansible.builtin.set_fact:
+    kafka_cluster_id: "{{ kafka_cluster_id_slurp.content | b64decode | trim }}"
+
+
+- name: Validate Kafka cluster ID
+  ansible.builtin.assert:
+    that:
+      - kafka_cluster_id is defined
+      - kafka_cluster_id | length > 0
+    fail_msg: "Kafka cluster ID could not be determined."
+
+
+- name: Store Kafka cluster ID on every Kafka node
+  ansible.builtin.copy:
+    content: "{{ kafka_cluster_id }}\n"
+    dest: "{{ kafka_cluster_id_file }}"
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0644"
+
+
+# ============================================================
+# Existing KRaft metadata
+# ============================================================
+
+- name: Check Kafka KRaft metadata
+  ansible.builtin.stat:
+    path: "{{ kafka_data_dir }}/meta.properties"
+  register: kafka_meta_properties
+
+
+- name: Read existing Kafka metadata
+  ansible.builtin.slurp:
+    src: "{{ kafka_data_dir }}/meta.properties"
+  register: kafka_existing_meta
+  when:
+    - kafka_meta_properties.stat.exists
+
+
+- name: Verify existing Kafka storage belongs to expected cluster
+  ansible.builtin.assert:
+    that:
+      - kafka_cluster_id in (kafka_existing_meta.content | b64decode)
+    fail_msg: >-
+      Existing Kafka storage on {{ inventory_hostname }}
+      does not belong to cluster {{ kafka_cluster_id }}.
+      Refusing to continue.
+  when:
+    - kafka_meta_properties.stat.exists
+
+
+# ============================================================
+# Controller Directory ID
+#
+# Kafka dynamic KRaft voters require a unique directory ID
+# for every controller.
+# ============================================================
+
+- name: Check Kafka controller directory ID
+  ansible.builtin.stat:
+    path: "{{ kafka_install_root }}/kafka-directory.id"
+  register: kafka_directory_id_stat
+
+
+- name: Generate Kafka controller directory ID
+  ansible.builtin.command:
+    cmd: "{{ kafka_current_dir }}/bin/kafka-storage.sh random-uuid"
+  register: kafka_generated_directory_id
+  changed_when: true
+  when:
+    - not kafka_directory_id_stat.stat.exists
+
+
+- name: Store Kafka controller directory ID
+  ansible.builtin.copy:
+    content: "{{ kafka_generated_directory_id.stdout | trim }}\n"
+    dest: "{{ kafka_install_root }}/kafka-directory.id"
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0644"
+  when:
+    - not kafka_directory_id_stat.stat.exists
+
+
+- name: Read Kafka controller directory ID
+  ansible.builtin.slurp:
+    src: "{{ kafka_install_root }}/kafka-directory.id"
+  register: kafka_directory_id_slurp
+
+
+- name: Set Kafka controller directory ID
+  ansible.builtin.set_fact:
+    kafka_directory_id: >-
+      {{ kafka_directory_id_slurp.content | b64decode | trim }}
+
+
+- name: Validate Kafka controller directory ID
+  ansible.builtin.assert:
+    that:
+      - kafka_directory_id is defined
+      - kafka_directory_id | length > 0
+    fail_msg: >-
+      Kafka controller directory ID could not be determined
+      for {{ inventory_hostname }}.
+
+
+# ============================================================
+# Initial Controller Membership
+#
+# Kafka 4.x dynamic voter syntax:
+#
+# node.id@host:controller-port:directory-id
+#
+# Example:
+#
+# 1@10.148.0.3:9093:AAAA,
+# 2@10.148.0.2:9093:BBBB
+# ============================================================
+
+- name: Build Kafka initial controller list
+  ansible.builtin.set_fact:
+    kafka_initial_controllers: >-
+      {%- for host in groups['kafka'] -%}
+      {{ hostvars[host].kafka_node_id }}@{{ hostvars[host].kafka_host }}:{{ kafka_controller_port }}:{{ hostvars[host].kafka_directory_id }}{% if not loop.last %},{% endif %}
+      {%- endfor -%}
+
+
+- name: Validate Kafka initial controller list
+  ansible.builtin.assert:
+    that:
+      - kafka_initial_controllers is defined
+      - kafka_initial_controllers | length > 0
+    fail_msg: "Kafka initial controller list could not be generated."
+
+
+- name: Display Kafka KRaft bootstrap information
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Kafka KRaft bootstrap"
+      - "Current Node        : {{ inventory_hostname }}"
+      - "Node ID             : {{ kafka_node_id }}"
+      - "Cluster ID          : {{ kafka_cluster_id }}"
+      - "Directory ID        : {{ kafka_directory_id }}"
+      - "Initial Controllers : {{ kafka_initial_controllers }}"
+      - "========================================"
+
+
+# ============================================================
+# Format KRaft Storage
+#
+# Only format storage when meta.properties does not exist.
+# ============================================================
+
+- name: Format Kafka KRaft storage
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ kafka_user }}"
+      - --
+      - "{{ kafka_current_dir }}/bin/kafka-storage.sh"
+      - format
+      - --cluster-id
+      - "{{ kafka_cluster_id }}"
+      - --config
+      - "{{ kafka_current_dir }}/config/kraft/server.properties"
+      - --initial-controllers
+      - "{{ kafka_initial_controllers }}"
+  become: true
+  register: kafka_storage_format
+  changed_when: kafka_storage_format.rc == 0
+  when:
+    - not kafka_meta_properties.stat.exists
+
+
+# ============================================================
+# Validate formatted storage
+# ============================================================
+
+- name: Check Kafka metadata after initialization
+  ansible.builtin.stat:
+    path: "{{ kafka_data_dir }}/meta.properties"
+  register: kafka_meta_properties_after
+
+
+- name: Verify Kafka KRaft storage initialization
+  ansible.builtin.assert:
+    that:
+      - kafka_meta_properties_after.stat.exists
+    fail_msg: >-
+      Kafka KRaft storage initialization failed on
+      {{ inventory_hostname }}.
+
+
+- name: Read Kafka metadata after initialization
+  ansible.builtin.slurp:
+    src: "{{ kafka_data_dir }}/meta.properties"
+  register: kafka_meta_properties_content
+
+
+- name: Verify formatted storage belongs to expected cluster
+  ansible.builtin.assert:
+    that:
+      - kafka_cluster_id in
+        (kafka_meta_properties_content.content | b64decode)
+    fail_msg: >-
+      Kafka metadata on {{ inventory_hostname }}
+      does not contain expected cluster ID
+      {{ kafka_cluster_id }}.
+
+
+# ============================================================
+# Summary
+# ============================================================
+
+- name: Kafka KRaft initialization summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Kafka KRaft initialization completed"
+      - "Cluster ID          : {{ kafka_cluster_id }}"
+      - "Directory ID        : {{ kafka_directory_id }}"
+      - "Init Host           : {{ kafka_kraft_init_host }}"
+      - "Current Node        : {{ inventory_hostname }}"
+      - "Node ID             : {{ kafka_node_id }}"
+      - "Data Directory      : {{ kafka_data_dir }}"
+      - "Metadata Exists     : {{ kafka_meta_properties_after.stat.exists }}"
+      - "Initial Controllers : {{ kafka_initial_controllers }}"
+      - "========================================"

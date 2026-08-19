@@ -1,0 +1,90 @@
+---
+- name: Check Kafka archive exists on Ansible controller
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/{{ kafka_archive }}"
+  register: kafka_archive_stat
+  delegate_to: localhost
+  become: false
+
+- name: Fail if Kafka archive is missing
+  ansible.builtin.assert:
+    that:
+      - kafka_archive_stat.stat.exists
+    fail_msg: >-
+      Kafka archive not found:
+      {{ role_path }}/files/{{ kafka_archive }}
+
+- name: Check whether Kafka is already installed
+  ansible.builtin.stat:
+    path: "{{ kafka_install_dir }}/bin/kafka-server-start.sh"
+  register: kafka_installed
+
+- name: Copy Kafka archive to target
+  ansible.builtin.copy:
+    src: "{{ kafka_archive }}"
+    dest: "/tmp/{{ kafka_archive }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not kafka_installed.stat.exists
+
+- name: Extract Kafka archive
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ kafka_archive }}"
+    dest: "{{ kafka_install_root }}"
+    remote_src: true
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+  when: not kafka_installed.stat.exists
+
+- name: Verify Kafka installation directory exists
+  ansible.builtin.stat:
+    path: "{{ kafka_install_dir }}"
+  register: kafka_install_dir_stat
+
+- name: Fail if Kafka installation directory was not created
+  ansible.builtin.assert:
+    that:
+      - kafka_install_dir_stat.stat.exists
+      - kafka_install_dir_stat.stat.isdir
+    fail_msg: >-
+      Kafka installation directory {{ kafka_install_dir }}
+      was not created successfully.
+
+- name: Create Kafka current symlink
+  ansible.builtin.file:
+    src: "{{ kafka_install_dir }}"
+    dest: "{{ kafka_current_dir }}"
+    state: link
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    force: true
+
+- name: Remove temporary Kafka archive
+  ansible.builtin.file:
+    path: "/tmp/{{ kafka_archive }}"
+    state: absent
+
+- name: Verify Kafka executable
+  ansible.builtin.stat:
+    path: "{{ kafka_current_dir }}/bin/kafka-server-start.sh"
+  register: kafka_executable
+
+- name: Fail if Kafka executable is missing
+  ansible.builtin.assert:
+    that:
+      - kafka_executable.stat.exists
+    fail_msg: >-
+      Kafka executable not found at
+      {{ kafka_current_dir }}/bin/kafka-server-start.sh
+
+- name: Display Kafka installation information
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Kafka binaries installed"
+      - "Version     : {{ kafka_version }}"
+      - "Install Dir : {{ kafka_install_dir }}"
+      - "Current     : {{ kafka_current_dir }}"
+      - "Archive     : {{ kafka_archive }}"
+      - "========================================"

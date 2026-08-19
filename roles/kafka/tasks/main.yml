@@ -1,0 +1,36 @@
+---
+# ============================================================
+# Apache Kafka Role
+# ============================================================
+
+- name: Run Kafka uninstall
+  ansible.builtin.include_tasks: uninstall.yml
+  when:
+    - kafka_action | default('install') == 'uninstall'
+
+
+- name: Run Kafka installation
+  when:
+    - kafka_action | default('install') == 'install'
+  block:
+
+    - name: Run Kafka prechecks
+      ansible.builtin.include_tasks: precheck.yml
+
+    - name: Install Kafka prerequisites
+      ansible.builtin.include_tasks: prerequisites.yml
+
+    - name: Install Kafka binaries
+      ansible.builtin.include_tasks: install.yml
+
+    - name: Configure Kafka
+      ansible.builtin.include_tasks: configure.yml
+
+    - name: Initialize KRaft
+      ansible.builtin.include_tasks: kraft.yml
+
+    - name: Configure Kafka systemd service
+      ansible.builtin.include_tasks: systemd.yml
+
+    - name: Validate Kafka
+      ansible.builtin.include_tasks: validate.yml

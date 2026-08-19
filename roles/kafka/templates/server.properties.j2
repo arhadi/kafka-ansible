@@ -1,0 +1,85 @@
+# ============================================================
+# Apache Kafka {{ kafka_version }}
+# Managed by Ansible
+# DO NOT EDIT MANUALLY
+# ============================================================
+
+# ------------------------------------------------------------
+# KRaft
+# ------------------------------------------------------------
+
+process.roles={{ kafka_process_roles }}
+node.id={{ kafka_node_id }}
+
+# ------------------------------------------------------------
+# Listeners
+# ------------------------------------------------------------
+
+listeners=BROKER://0.0.0.0:{{ kafka_broker_port }},CONTROLLER://0.0.0.0:{{ kafka_controller_port }}
+
+advertised.listeners=BROKER://{{ ansible_host | default(inventory_hostname) }}:{{ kafka_broker_port }}
+
+listener.security.protocol.map=BROKER:PLAINTEXT,CONTROLLER:PLAINTEXT
+
+inter.broker.listener.name=BROKER
+
+controller.listener.names=CONTROLLER
+
+# ------------------------------------------------------------
+# KRaft Controller Quorum
+# Generated automatically from Ansible inventory
+# ------------------------------------------------------------
+
+controller.quorum.bootstrap.servers={% for host in groups['kafka'] %}{{ hostvars[host].ansible_host | default(host) }}:{{ kafka_controller_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+# ------------------------------------------------------------
+# Storage
+# ------------------------------------------------------------
+
+log.dirs={{ kafka_data_dir }}
+
+# ------------------------------------------------------------
+# Replication
+# ------------------------------------------------------------
+
+default.replication.factor={{ kafka_default_replication_factor }}
+
+min.insync.replicas={{ kafka_min_insync_replicas }}
+
+offsets.topic.replication.factor={{ kafka_offsets_topic_replication_factor }}
+
+transaction.state.log.replication.factor={{ kafka_transaction_state_log_replication_factor }}
+
+transaction.state.log.min.isr={{ kafka_transaction_state_log_min_isr }}
+
+# ------------------------------------------------------------
+# Topic Configuration
+# ------------------------------------------------------------
+
+num.partitions={{ kafka_num_partitions | default(3) }}
+
+auto.create.topics.enable={{ kafka_auto_create_topics | default(false) | string | lower }}
+
+# ------------------------------------------------------------
+# Network
+# ------------------------------------------------------------
+
+num.network.threads={{ kafka_num_network_threads | default(3) }}
+
+num.io.threads={{ kafka_num_io_threads | default(8) }}
+
+socket.send.buffer.bytes={{ kafka_socket_send_buffer_bytes | default(102400) }}
+
+socket.receive.buffer.bytes={{ kafka_socket_receive_buffer_bytes | default(102400) }}
+
+socket.request.max.bytes={{ kafka_socket_request_max_bytes | default(104857600) }}
+
+# ------------------------------------------------------------
+# Log Retention
+# ------------------------------------------------------------
+
+log.retention.hours={{ kafka_log_retention_hours | default(168) }}
+
+log.segment.bytes={{ kafka_log_segment_bytes | default(1073741824) }}
+
+log.retention.check.interval.ms={{ kafka_log_retention_check_interval_ms | default(300000) }}

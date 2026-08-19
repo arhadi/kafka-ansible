@@ -1,0 +1,220 @@
+---
+# ============================================================
+# Apache Kafka Uninstall
+# ============================================================
+
+
+# ------------------------------------------------------------
+# Display uninstall information
+# ------------------------------------------------------------
+
+- name: Display Kafka uninstall information
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Apache Kafka Uninstall"
+      - "Host                    : {{ inventory_hostname }}"
+      - "Node ID                 : {{ kafka_node_id | default('N/A') }}"
+      - "Installation Directory  : {{ kafka_install_dir }}"
+      - "Current Symlink         : {{ kafka_current_dir }}"
+      - "Data Directory          : {{ kafka_data_dir }}"
+      - "Log Directory           : {{ kafka_log_dir }}"
+      - "Remove Data             : {{ kafka_uninstall_remove_data }}"
+      - "Remove Cluster Metadata : {{ kafka_uninstall_remove_cluster_metadata }}"
+      - "Remove User             : {{ kafka_uninstall_remove_user }}"
+      - "========================================"
+
+
+# ------------------------------------------------------------
+# Stop Kafka
+# ------------------------------------------------------------
+
+- name: Check Kafka service
+  ansible.builtin.stat:
+    path: /etc/systemd/system/kafka.service
+  register: kafka_service_file
+
+
+- name: Stop and disable Kafka service
+  ansible.builtin.systemd:
+    name: kafka
+    state: stopped
+    enabled: false
+  when:
+    - kafka_service_file.stat.exists
+  failed_when: false
+
+
+# ------------------------------------------------------------
+# Remove systemd service
+# ------------------------------------------------------------
+
+- name: Remove Kafka systemd service
+  ansible.builtin.file:
+    path: /etc/systemd/system/kafka.service
+    state: absent
+
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+
+- name: Reset Kafka failed systemd state
+  ansible.builtin.command:
+    cmd: systemctl reset-failed kafka.service
+  changed_when: false
+  failed_when: false
+
+
+# ------------------------------------------------------------
+# Remove current symlink
+# ------------------------------------------------------------
+
+- name: Remove Kafka current symlink
+  ansible.builtin.file:
+    path: "{{ kafka_current_dir }}"
+    state: absent
+  when:
+    - kafka_uninstall_remove_installation | bool
+
+
+# ------------------------------------------------------------
+# Remove Kafka installation
+# ------------------------------------------------------------
+
+- name: Remove Kafka installation directory
+  ansible.builtin.file:
+    path: "{{ kafka_install_dir }}"
+    state: absent
+  when:
+    - kafka_uninstall_remove_installation | bool
+
+
+# ------------------------------------------------------------
+# Remove Kafka logs
+# ------------------------------------------------------------
+
+- name: Remove Kafka log directory
+  ansible.builtin.file:
+    path: "{{ kafka_log_dir }}"
+    state: absent
+  when:
+    - kafka_uninstall_remove_logs | bool
+
+
+# ------------------------------------------------------------
+# Remove Kafka data
+#
+# WARNING:
+# This removes KRaft metadata, partitions and topic data.
+# ------------------------------------------------------------
+
+- name: Remove Kafka data directory
+  ansible.builtin.file:
+    path: "{{ kafka_data_dir }}"
+    state: absent
+  when:
+    - kafka_uninstall_remove_data | bool
+
+
+# ------------------------------------------------------------
+# Remove persistent KRaft IDs
+# ------------------------------------------------------------
+
+- name: Remove Kafka cluster ID
+  ansible.builtin.file:
+    path: "{{ kafka_cluster_id_file }}"
+    state: absent
+  when:
+    - kafka_uninstall_remove_cluster_metadata | bool
+
+
+- name: Remove Kafka controller directory ID
+  ansible.builtin.file:
+    path: "{{ kafka_install_root }}/kafka-directory.id"
+    state: absent
+  when:
+    - kafka_uninstall_remove_cluster_metadata | bool
+
+
+# ------------------------------------------------------------
+# Remove Kafka user/group
+# ------------------------------------------------------------
+
+- name: Remove Kafka user
+  ansible.builtin.user:
+    name: "{{ kafka_user }}"
+    state: absent
+    remove: false
+  when:
+    - kafka_uninstall_remove_user | bool
+
+
+- name: Remove Kafka group
+  ansible.builtin.group:
+    name: "{{ kafka_group }}"
+    state: absent
+  when:
+    - kafka_uninstall_remove_user | bool
+
+
+# ------------------------------------------------------------
+# Validation
+# ------------------------------------------------------------
+
+- name: Check Kafka process after uninstall
+  ansible.builtin.shell: |
+    ps -eo pid,args | grep '[k]afka.Kafka' || true
+  register: kafka_process_check
+  changed_when: false
+  when:
+    - not ansible_check_mode
+
+- name: Check Kafka ports after uninstall
+  ansible.builtin.shell: |
+    ss -lnt | grep -E ':9092|:9093' || true
+  register: kafka_port_check
+  changed_when: false
+  when:
+    - not ansible_check_mode
+
+
+- name: Verify Kafka service was removed
+  ansible.builtin.stat:
+    path: /etc/systemd/system/kafka.service
+  register: kafka_service_after
+  when:
+    - not ansible_check_mode
+
+
+- name: Validate Kafka uninstall
+  ansible.builtin.assert:
+    that:
+      - not kafka_service_after.stat.exists
+      - kafka_process_check.stdout | trim == ''
+      - kafka_port_check.stdout | trim == ''
+    fail_msg: >-
+      Kafka uninstall validation failed on {{ inventory_hostname }}.
+      Check Kafka service, running processes and ports 9092/9093.
+  when:
+    - not ansible_check_mode
+
+# ------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------
+
+- name: Kafka uninstall summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Kafka uninstall completed"
+      - "Host             : {{ inventory_hostname }}"
+      - "Kafka Service    : Removed"
+      - "Kafka Process    : Stopped"
+      - "Broker Port 9092 : Closed"
+      - "KRaft Port 9093  : Closed"
+      - "Data Removed     : {{ kafka_uninstall_remove_data }}"
+      - "Metadata Removed : {{ kafka_uninstall_remove_cluster_metadata }}"
+      - "User Removed     : {{ kafka_uninstall_remove_user }}"
+      - "========================================"

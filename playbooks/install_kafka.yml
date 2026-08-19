@@ -1,0 +1,8 @@
+---
+- name: Install Apache Kafka
+  hosts: kafka
+  become: true
+  gather_facts: true
+
+  roles:
+    - kafka

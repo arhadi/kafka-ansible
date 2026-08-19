@@ -1,0 +1,126 @@
+---
+# ============================================================
+# Apache Kafka defaults
+# ============================================================
+
+kafka_version: "4.3.1"
+kafka_scala_version: "2.13"
+
+kafka_archive: "kafka_{{ kafka_scala_version }}-{{ kafka_version }}.tgz"
+
+# ============================================================
+# User / Group
+# ============================================================
+
+kafka_user: kafka
+kafka_group: kafka
+
+# ============================================================
+# KRaft Cluster
+# ============================================================
+
+kafka_cluster_id_file: "{{ kafka_install_root }}/kafka-cluster.id"
+
+# ============================================================
+# Installation
+# ============================================================
+
+kafka_install_root: /app
+
+kafka_install_dir: "{{ kafka_install_root }}/kafka_{{ kafka_scala_version }}-{{ kafka_version }}"
+kafka_current_dir: "{{ kafka_install_root }}/kafka"
+
+kafka_data_dir: "{{ kafka_install_root }}/kafka-data"
+kafka_log_dir: "{{ kafka_install_root }}/kafka-logs"
+
+# ============================================================
+# Network
+# ============================================================
+
+kafka_broker_port: 9092
+kafka_controller_port: 9093
+
+# ============================================================
+# KRaft
+# ============================================================
+
+kafka_process_roles: "broker,controller"
+
+# ============================================================
+# JVM
+# ============================================================
+
+kafka_heap_opts: "-Xms1G -Xmx1G"
+
+# ============================================================
+# Replication
+#
+# Automatically calculated from Kafka inventory size:
+#
+# 1 node  -> RF=1, min ISR=1
+# 2 nodes -> RF=2, min ISR=1
+# 3+ nodes -> RF=3, min ISR=2
+# ============================================================
+
+kafka_replication_factor: "{{ [groups['kafka'] | length, 3] | min }}"
+
+kafka_min_insync_replicas: >-
+  {{ 2 if (groups['kafka'] | length | int) >= 3 else 1 }}
+
+kafka_default_replication_factor: "{{ kafka_replication_factor }}"
+
+kafka_offsets_topic_replication_factor: "{{ kafka_replication_factor }}"
+
+kafka_transaction_state_log_replication_factor: "{{ kafka_replication_factor }}"
+
+kafka_transaction_state_log_min_isr: "{{ kafka_min_insync_replicas }}"
+
+# ============================================================
+# Topics
+# ============================================================
+
+kafka_num_partitions: 3
+kafka_auto_create_topics: false
+
+# ============================================================
+# Threads
+# ============================================================
+
+kafka_num_network_threads: 3
+kafka_num_io_threads: 8
+
+# ============================================================
+# Socket
+# ============================================================
+
+kafka_socket_send_buffer_bytes: 102400
+kafka_socket_receive_buffer_bytes: 102400
+kafka_socket_request_max_bytes: 104857600
+
+# ============================================================
+# Log retention
+# ============================================================
+
+kafka_log_retention_hours: 168
+kafka_log_segment_bytes: 1073741824
+kafka_log_retention_check_interval_ms: 300000
+
+
+# ============================================================
+# Uninstall
+# ============================================================
+
+# Remove Kafka installation binaries
+kafka_uninstall_remove_installation: true
+
+# Remove Kafka data including KRaft metadata and topic data
+kafka_uninstall_remove_data: false
+
+# Remove Kafka application logs
+kafka_uninstall_remove_logs: true
+
+# Remove persisted cluster/directory IDs
+kafka_uninstall_remove_cluster_metadata: false
+
+# Remove kafka OS user/group
+kafka_uninstall_remove_user: false
